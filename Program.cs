@@ -1,11 +1,9 @@
-
-     using TaskManagerApi.Data;
+using TaskManagerApi.Data;
 using MongoDB.Driver;
 using MongoDB.Bson;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using System.Reflection;
-using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Text.Json.Serialization;
 using System.Security.Authentication;
 using Microsoft.Extensions.Hosting;
@@ -58,18 +56,16 @@ builder.Services.AddSwaggerGen(c =>
     }
 });
 
-// Configuración mejorada de MongoDB
+// Configuración de MongoDB
 var connectionString = builder.Configuration.GetConnectionString("MongoDbConnection");
 var mongoClientSettings = MongoClientSettings.FromUrl(new MongoUrl(connectionString));
 
 mongoClientSettings.SslSettings = new SslSettings
 {
-    EnabledSslProtocols = SslProtocols.Tls12,
-    ServerCertificateValidationCallback = (sender, certificate, chain, errors) => true
+    EnabledSslProtocols = SslProtocols.Tls12
 };
-
-mongoClientSettings.ConnectTimeout = TimeSpan.FromSeconds(45);
-mongoClientSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(45);
+mongoClientSettings.ConnectTimeout = TimeSpan.FromSeconds(30);
+mongoClientSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(30);
 mongoClientSettings.SocketTimeout = TimeSpan.FromSeconds(30);
 mongoClientSettings.RetryWrites = true;
 mongoClientSettings.ReadPreference = ReadPreference.Primary;
@@ -79,19 +75,32 @@ builder.Services.AddSingleton<TaskContext>();
 
 var app = builder.Build();
 
-// Middleware para manejar errores globalmente
+// Middleware para registrar solicitudes
 app.Use(async (context, next) =>
 {
-    try
-    {
-        await next();
-    }
-    catch (Exception ex)
+    app.Logger.LogInformation($"Solicitud recibida: {context.Request.Method} {context.Request.Path}");
+    await next();
+});
+
+// Middleware para manejar errores globalmente
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
     {
         context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-        await context.Response.WriteAsync($"Error interno: {ex.Message}");
-        app.Logger.LogError(ex, "Error no controlado");
-    }
+        context.Response.ContentType = "application/json";
+
+        var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        if (exception != null)
+        {
+            app.Logger.LogError(exception, "Error no controlado");
+            var errorResponse = new
+            {
+                error = app.Environment.IsDevelopment() ? exception.Message : "Error interno del servidor"
+            };
+            await context.Response.WriteAsJsonAsync(errorResponse);
+        }
+    });
 });
 
 // Configuración del pipeline HTTP
@@ -107,35 +116,27 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Configuración CORS actualizada
+// Configuración CORS
+var allowedOrigins = builder.Configuration.GetValue<string>("AllowedOrigins")?.Split(";") 
+    ?? new[] { "https://gestorricardo.netlify.app", "http://localhost:3000", "http://localhost:5500", "http://127.0.0.1:5500" };
 app.UseCors(builder => builder
-    .WithOrigins(
-        "https://gestorricardo.netlify.app",
-        "http://localhost:3000",
-        "http://localhost:5500",
-        "http://127.0.0.1:5500",
-        "https://gestortareasback.onrender.com")
+    .WithOrigins(allowedOrigins)
     .AllowAnyMethod()
     .AllowAnyHeader()
     .AllowCredentials());
 
-app.UseRouting();
 app.UseAuthorization();
+app.MapControllers();
 
-// Configuración explícita de endpoints
-app.UseEndpoints(endpoints =>
+// Endpoints adicionales
+app.MapGet("/", async context =>
 {
-    endpoints.MapControllers();
-    endpoints.MapGet("/", async context =>
-    {
-        await context.Response.WriteAsync("API de Tareas funcionando");
-    });
-    endpoints.MapGet("/healthz", () => "Healthy");
+    await context.Response.WriteAsync("API de Tareas funcionando");
 });
+app.MapGet("/healthz", () => new { status = "Healthy" });
 
-// Solución para mantener la aplicación corriendo en Render
-var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-lifetime.ApplicationStopping.Register(() => Thread.Sleep(Timeout.Infinite));
+// Configuración del puerto dinámico para Render
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+app.Urls.Add($"http://0.0.0.0:{port}");
 
 app.Run();
-     
