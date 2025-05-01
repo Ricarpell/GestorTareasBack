@@ -45,7 +45,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Type = "string",
         Format = "24-digit hex string",
-        Example = OpenApiAnyFactory.CreateFromJson("\"507f191e810c19729de860ea\"")
+        Example = new OpenApiString("507f191e810c19729de860ea")
     });
 
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
