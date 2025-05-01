@@ -44,8 +44,8 @@ builder.Services.AddSwaggerGen(c =>
     c.MapType<ObjectId>(() => new OpenApiSchema
     {
         Type = "string",
-        Format = "24-digit hex string",
-        Example = new OpenApiString("507f191e810c19729de860ea")
+        Format = "24-digit-hex-string",
+        Description = "A MongoDB ObjectId represented as a 24-character hexadecimal string"
     });
 
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
