@@ -24,22 +24,56 @@ namespace TaskManagerApi.Controllers
         /// <summary>
         /// Obtiene todas las tareas
         /// </summary>
-        [HttpGet]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public async Task<ActionResult<IEnumerable<TaskItem>>> GetAll()
+         [HttpGet]
+    public async Task<ActionResult<IEnumerable<TaskResponseDto>>> GetAll()
+    {
+        var tasks = await _context.Tasks.Find(_ => true).ToListAsync();
+        return Ok(tasks.Select(t => new TaskResponseDto
         {
-            try
-            {
-                var tasks = await _tasks.Find(_ => true).ToListAsync();
-                return Ok(tasks);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al obtener tareas");
-                return Problem("Error interno al obtener tareas", statusCode: 500);
-            }
-        }
+            Id = t.Id,
+            Title = t.Title,
+            Description = t.Description,
+            IsCompleted = t.IsCompleted,
+            CreatedAt = t.CreatedAt
+        }));
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<TaskResponseDto>> Create([FromBody] CreateTaskDto dto)
+    {
+        var task = new TaskItem
+        {
+            Title = dto.Title,
+            Description = dto.Description,
+            IsCompleted = dto.IsCompleted,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _context.Tasks.InsertOneAsync(task);
+
+        return CreatedAtAction(nameof(GetById), new { id = task.Id }, new TaskResponseDto
+        {
+            Id = task.Id,
+            Title = task.Title,
+            Description = task.Description,
+            IsCompleted = task.IsCompleted,
+            CreatedAt = task.CreatedAt
+        });
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(string id, [FromBody] UpdateTaskDto dto)
+    {
+        var update = Builders<TaskItem>.Update
+            .Set(t => t.Title, dto.Title)
+            .Set(t => t.Description, dto.Description)
+            .Set(t => t.IsCompleted, dto.IsCompleted);
+
+        await _context.Tasks.UpdateOneAsync(t => t.Id == id, update);
+        return NoContent();
+    }
+
+
 
         /// <summary>
         /// Obtiene una tarea por ID
@@ -71,41 +105,7 @@ namespace TaskManagerApi.Controllers
         /// Crea una nueva tarea
         /// </summary>
         /// <param name="task">Datos de la tarea</param>
-        [HttpPost]
-        [ProducesResponseType(StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public async Task<ActionResult<TaskItem>> Create([FromBody] TaskItemDto taskDto)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
-
-            try
-            {
-                var task = new TaskItem
-                {
-                    Id = ObjectId.GenerateNewId().ToString(),
-                    Title = taskDto.Title,
-                    Description = taskDto.Description,
-                    IsCompleted = taskDto.IsCompleted,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                await _tasks.InsertOneAsync(task);
-                return CreatedAtAction(nameof(GetById), new { id = task.Id }, task);
-            }
-            catch (MongoWriteException ex) when (ex.WriteError.Category == ServerErrorCategory.DuplicateKey)
-            {
-                _logger.LogError(ex, "Error de clave duplicada");
-                return Conflict("Ya existe una tarea con ese identificador");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error al crear tarea");
-                return Problem("Error interno al crear tarea", statusCode: 500);
-            }
-        }
+        
 
         /// <summary>
         /// Actualiza una tarea existente
