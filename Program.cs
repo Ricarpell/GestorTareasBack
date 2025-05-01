@@ -8,10 +8,17 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Text.Json.Serialization;
 using System.Security.Authentication;
 using Microsoft.Extensions.Hosting;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ========== CONFIGURACIÓN BÁSICA ========== //
+// Configuración mejorada de logging
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+builder.Logging.SetMinimumLevel(LogLevel.Debug);
+
+// Configuración de controladores
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -19,7 +26,7 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
-// ========== SWAGGER (SOLO EN DESARROLLO) ========== //
+// Configuración de Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -28,7 +35,11 @@ builder.Services.AddSwaggerGen(c =>
         Title = "Task Manager API",
         Version = "v1",
         Description = "API para gestión de tareas con MongoDB",
-        Contact = new OpenApiContact { Name = "Soporte", Email = "soporte@taskmanager.com" }
+        Contact = new OpenApiContact
+        {
+            Name = "Soporte",
+            Email = "soporte@taskmanager.com"
+        }
     });
 
     c.MapType<ObjectId>(() => new OpenApiSchema
@@ -40,51 +51,78 @@ builder.Services.AddSwaggerGen(c =>
 
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath)) c.IncludeXmlComments(xmlPath);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
 });
 
-// ========== MONGO DB (CON SSL/TLS) ========== //
+// Configuración mejorada de MongoDB
 var connectionString = builder.Configuration.GetConnectionString("MongoDbConnection");
 var mongoClientSettings = MongoClientSettings.FromUrl(new MongoUrl(connectionString));
 
-// Configuración SSL/TLS crítica para MongoDB Atlas
+// Configuración SSL/TLS crítica
 mongoClientSettings.SslSettings = new SslSettings
 {
     EnabledSslProtocols = SslProtocols.Tls12,
-    ServerCertificateValidationCallback = (sender, cert, chain, errors) => true // Solo para desarrollo
+    ServerCertificateValidationCallback = (sender, certificate, chain, errors) => true
 };
 
 mongoClientSettings.ConnectTimeout = TimeSpan.FromSeconds(30);
 mongoClientSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(30);
 mongoClientSettings.SocketTimeout = TimeSpan.FromSeconds(30);
+mongoClientSettings.RetryWrites = true;
+mongoClientSettings.ReadPreference = ReadPreference.Primary;
 
+// Configuración del cliente MongoDB
 builder.Services.AddSingleton<IMongoClient>(new MongoClient(mongoClientSettings));
 builder.Services.AddSingleton<TaskContext>();
 
-// ========== CONSTRUIR APP ========== //
 var app = builder.Build();
 
-// ========== MIDDLEWARE PIPELINE ========== //
+// Middleware para manejar errores globalmente
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+        await context.Response.WriteAsync($"Error interno: {ex.Message}");
+        app.Logger.LogError(ex, "Error no controlado");
+    }
+});
+
+// Configuración del pipeline HTTP
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Task Manager API v1"));
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Task Manager API v1");
+        c.RoutePrefix = "swagger";
+    });
 }
 
 app.UseHttpsRedirection();
-app.UseRouting();
 
-// CORS (Ajusta los orígenes en producción)
+// Configuración CORS actualizada
 app.UseCors(builder => builder
-    .WithOrigins("https://gestorricardo.netlify.app", "http://localhost:3000")
+    .WithOrigins(
+        "https://gestorricardo.netlify.app",
+        "http://localhost:3000",
+        "https://gestortareasback.onrender.com")
     .AllowAnyMethod()
     .AllowAnyHeader()
     .AllowCredentials());
 
+app.UseRouting();
 app.UseAuthorization();
 app.MapControllers();
 
-// ========== EVITAR CIERRE INESPERADO (RENDER) ========== //
+// Solución para mantener la aplicación corriendo en Render
 var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
 lifetime.ApplicationStopping.Register(() => Thread.Sleep(Timeout.Infinite));
 
