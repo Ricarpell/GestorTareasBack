@@ -9,13 +9,13 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuraci髇 de logging
+// Configuraci贸n de logging
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
-// Configuraci髇 de controladores
+// Configuraci贸n de controladores
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -23,7 +23,7 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
-// Configuraci髇 de Swagger
+// Configuraci贸n de Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -31,7 +31,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "Task Manager API",
         Version = "v1",
-        Description = "API para gesti髇 de tareas con MongoDB",
+        Description = "API para gesti贸n de tareas con MongoDB",
         Contact = new OpenApiContact
         {
             Name = "Soporte",
@@ -39,7 +39,7 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 
-    // Configuraci髇 para ObjectId
+    // Configuraci贸n para ObjectId
     c.MapType<ObjectId>(() => new OpenApiSchema
     {
         Type = "string",
@@ -59,7 +59,7 @@ builder.Services.AddSwaggerGen(c =>
     }
 });
 
-// Configuraci髇 de MongoDB
+// Configuraci贸n de MongoDB
 var connectionString = builder.Configuration.GetConnectionString("MongoDbConnection");
 var mongoClientSettings = MongoClientSettings.FromConnectionString(connectionString);
 mongoClientSettings.ConnectTimeout = TimeSpan.FromSeconds(30);
@@ -71,10 +71,8 @@ builder.Services.AddSingleton<TaskContext>();
 
 var app = builder.Build();
 
-// Agrega esto despu閟 de var app = builder.Build();
-app.UseCors(builder => builder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 
-// Configuraci髇 del pipeline HTTP
+// Configuraci贸n del pipeline HTTP
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -89,6 +87,13 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseAuthorization();
+// Agrega esto ANTES de app.MapControllers();
+app.UseCors(builder => builder
+    .WithOrigins("https://gestorricardo.netlify.app") // URL exacta de tu frontend
+    .AllowAnyMethod()
+    .AllowAnyHeader());
+
+
 app.MapControllers();
 
 app.Run();
