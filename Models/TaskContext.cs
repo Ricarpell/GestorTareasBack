@@ -1,5 +1,4 @@
-﻿using MongoDB.Driver;
-using TaskManagerApi.Models;
+using MongoDB.Driver;
 
 namespace TaskManagerApi.Data
 {
