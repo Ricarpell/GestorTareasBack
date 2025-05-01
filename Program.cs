@@ -1,4 +1,5 @@
-using TaskManagerApi.Data;
+
+     using TaskManagerApi.Data;
 using MongoDB.Driver;
 using MongoDB.Bson;
 using Microsoft.OpenApi.Models;
@@ -111,6 +112,8 @@ app.UseCors(builder => builder
     .WithOrigins(
         "https://gestorricardo.netlify.app",
         "http://localhost:3000",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
         "https://gestortareasback.onrender.com")
     .AllowAnyMethod()
     .AllowAnyHeader()
@@ -135,3 +138,4 @@ var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
 lifetime.ApplicationStopping.Register(() => Thread.Sleep(Timeout.Infinite));
 
 app.Run();
+     
