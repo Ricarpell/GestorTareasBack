@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Reflection;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Text.Json.Serialization;
+using System.Security.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,7 +40,6 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 
-    // Configuración para ObjectId
     c.MapType<ObjectId>(() => new OpenApiSchema
     {
         Type = "string",
@@ -47,10 +47,8 @@ builder.Services.AddSwaggerGen(c =>
         Example = OpenApiAnyFactory.CreateFromJson("\"507f191e810c19729de860ea\"")
     });
 
-    // Manejo de errores
     c.OperationFilter<ErrorResponsesOperationFilter>();
 
-    // Incluir comentarios XML
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
     if (File.Exists(xmlPath))
@@ -59,18 +57,28 @@ builder.Services.AddSwaggerGen(c =>
     }
 });
 
-// Configuración de MongoDB
+// Configuración mejorada de MongoDB
 var connectionString = builder.Configuration.GetConnectionString("MongoDbConnection");
-var mongoClientSettings = MongoClientSettings.FromConnectionString(connectionString);
+var mongoClientSettings = MongoClientSettings.FromUrl(new MongoUrl(connectionString));
+
+// Configuración SSL/TLS crítica
+mongoClientSettings.SslSettings = new SslSettings
+{
+    EnabledSslProtocols = SslProtocols.Tls12,
+    ServerCertificateValidationCallback = (sender, certificate, chain, errors) => true
+};
+
 mongoClientSettings.ConnectTimeout = TimeSpan.FromSeconds(30);
 mongoClientSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(30);
 mongoClientSettings.SocketTimeout = TimeSpan.FromSeconds(30);
+mongoClientSettings.RetryWrites = true;
+mongoClientSettings.ReadPreference = ReadPreference.Primary;
+mongoClientSettings.ApplicationName = "TaskManagerAPI";
 
 builder.Services.AddSingleton<IMongoClient>(new MongoClient(mongoClientSettings));
 builder.Services.AddSingleton<TaskContext>();
 
 var app = builder.Build();
-
 
 // Configuración del pipeline HTTP
 if (app.Environment.IsDevelopment())
@@ -86,14 +94,15 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseAuthorization();
-// Agrega esto ANTES de app.MapControllers();
+
+// Configuración CORS mejorada
 app.UseCors(builder => builder
-    .WithOrigins("https://gestorricardo.netlify.app") // URL exacta de tu frontend
+    .WithOrigins("https://gestorricardo.netlify.app")
     .AllowAnyMethod()
-    .AllowAnyHeader());
+    .AllowAnyHeader()
+    .AllowCredentials());
 
-
+app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
