@@ -4,14 +4,14 @@ using TaskManagerApi.Models;
 namespace TaskManagerApi.Data
 {
     public class TaskContext
+{
+    public IMongoCollection<Task> Tasks { get; }
+
+    public TaskContext(IMongoClient client, IConfiguration configuration)
     {
-        private readonly IMongoDatabase _database;
-
-        public TaskContext(IMongoClient mongoClient)
-        {
-            _database = mongoClient.GetDatabase("TaskManagerDb");
-        }
-
-        public IMongoCollection<TaskItem> Tasks => _database.GetCollection<TaskItem>("tasks");
+        var databaseName = configuration["MongoDbSettings:DatabaseName"] ?? "TaskManager";
+        var database = client.GetDatabase(databaseName);
+        Tasks = database.GetCollection<Task>("Tasks");
     }
+}
 }
